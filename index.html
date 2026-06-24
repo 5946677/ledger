@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="资产台账">
+<meta name="theme-color" content="#0f1117">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>个人资产台账</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family:'Georgia','Songti SC',serif;
+    background:#0f1117; color:#e2e8f0;
+    max-width:480px; margin:0 auto;
+    padding-bottom:74px; min-height:100vh;
+  }
+  .header { padding:18px 16px 12px; border-bottom:1px solid #1e2535; position:sticky; top:0; background:#0f1117; z-index:10; }
+  .header .eyebrow { font-size:10px; color:#4a90b8; letter-spacing:3px; text-transform:uppercase; margin-bottom:3px; }
+  .header h1 { font-size:20px; color:#f1f5f9; font-weight:700; }
+  .header .sub { font-size:11px; color:#64748b; margin-top:2px; }
+  .view { padding:16px; display:none; }
+  .view.active { display:block; }
+  .card { background:#1a1f2e; border-radius:12px; padding:14px; margin-bottom:12px; }
+  .card-title { font-size:10px; color:#64748b; letter-spacing:2px; text-transform:uppercase; margin-bottom:10px; }
+  .row { display:flex; justify-content:space-between; align-items:flex-start; padding:8px 0; border-bottom:1px solid #1e293b; }
+  .row:last-child { border-bottom:none; }
+  .row .label { font-size:13px; font-weight:600; }
+  .row .note { font-size:10px; color:#64748b; margin-top:2px; }
+  .row .amt { font-size:14px; font-weight:700; }
+  .total-row { border-top:2px solid #2d3748; margin-top:10px; padding-top:10px; display:flex; justify-content:space-between; align-items:center; }
+  .total-row .label { font-size:13px; color:#94a3b8; font-weight:600; }
+  .total-row .amt { font-size:18px; font-weight:800; color:#f1f5f9; }
+  .big-num { font-size:26px; font-weight:800; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .stat { background:#0f1117; border-radius:10px; padding:12px; }
+  .stat .k { font-size:10px; color:#64748b; }
+  .stat .v { font-size:18px; font-weight:800; margin-top:4px; }
+  input, textarea, select {
+    width:100%; background:#0f1117; border:1px solid #2d3748; border-radius:8px;
+    color:#e2e8f0; padding:10px 12px; font-size:14px; font-family:inherit; margin-top:4px;
+  }
+  input:focus, textarea:focus, select:focus { outline:none; border-color:#3b82f6; }
+  label.field { display:block; margin-bottom:12px; }
+  label.field .flabel { font-size:11px; color:#94a3b8; }
+  button.primary {
+    width:100%; background:#1e3a5f; color:#60a5fa; border:none; border-radius:10px;
+    padding:13px; font-size:14px; font-weight:700; font-family:inherit; cursor:pointer; margin-top:6px;
+  }
+  button.primary:active { background:#264a73; }
+  button.ghost {
+    background:transparent; color:#64748b; border:1px solid #2d3748; border-radius:8px;
+    padding:9px; font-size:12px; font-family:inherit; cursor:pointer; width:100%; margin-top:8px;
+  }
+  .task { display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-bottom:1px solid #1e293b; cursor:pointer; }
+  .task:last-child { border-bottom:none; }
+  .checkbox { width:22px; height:22px; border-radius:6px; border:2px solid #334155; flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center; transition:all .15s; }
+  .checkbox.done { background:#4ade80; border-color:#4ade80; }
+  .checkbox.done::after { content:'✓'; color:#0f1117; font-size:13px; font-weight:900; }
+  .task.done .ttext { text-decoration:line-through; opacity:.45; }
+  .ttext { font-size:13px; font-weight:600; flex:1; }
+  .tnote { font-size:11px; color:#4a5568; margin-top:3px; }
+  .tamt { font-size:14px; font-weight:800; flex-shrink:0; }
+  .hist-item { background:#0f1117; border-radius:10px; padding:13px; margin-bottom:8px; border-left:3px solid #60a5fa; cursor:pointer; }
+  .hist-item .hm { font-size:13px; font-weight:700; color:#60a5fa; }
+  .hist-item .ht { font-size:15px; font-weight:800; color:#f1f5f9; }
+  .hist-item .hc { font-size:11px; margin-top:3px; }
+  .tabbar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px; background:#141926; border-top:1px solid #1e2535; display:flex; z-index:20; }
+  .tab { flex:1; text-align:center; padding:10px 0 12px; cursor:pointer; color:#475569; }
+  .tab.active { color:#60a5fa; }
+  .tab .ico { font-size:18px; }
+  .tab .tl { font-size:10px; margin-top:2px; }
+  svg { width:100%; display:block; }
+  .pill { font-size:9px; border-radius:4px; padding:1px 6px; margin-left:6px; }
+  .empty { text-align:center; color:#334155; font-size:12px; padding:30px 0; }
+  .toast { position:fixed; bottom:90px; left:50%; transform:translateX(-50%); background:#1e3a5f; color:#dbeafe; padding:10px 20px; border-radius:20px; font-size:13px; z-index:50; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .toast.show { opacity:1; }
+  .seg { display:flex; gap:6px; margin-bottom:12px; }
+  .seg button { flex:1; padding:8px 0; border-radius:8px; border:none; background:#1a1f2e; color:#64748b; font-size:12px; font-family:inherit; font-weight:400; cursor:pointer; }
+  .seg button.on { background:#1e3a5f; color:#60a5fa; font-weight:700; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="eyebrow">个人资产台账 · CFO</div>
+  <h1 id="hdrTitle">资产台账</h1>
+  <div class="sub" id="hdrSub">本地存储 · 数据不上传</div>
+</div>
+
+<!-- 概览 -->
+<div class="view active" id="v-overview"></div>
+<!-- 录入 -->
+<div class="view" id="v-entry"></div>
+<!-- 计划 -->
+<div class="view" id="v-plan"></div>
+<!-- 历史 -->
+<div class="view" id="v-history"></div>
+
+<div class="tabbar">
+  <div class="tab active" data-v="overview"><div class="ico">📊</div><div class="tl">概览</div></div>
+  <div class="tab" data-v="entry"><div class="ico">✍️</div><div class="tl">录入</div></div>
+  <div class="tab" data-v="plan"><div class="ico">✅</div><div class="tl">计划</div></div>
+  <div class="tab" data-v="history"><div class="ico">🗂️</div><div class="tl">历史</div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ 数据层 ============
+const ACCOUNTS = [
+  { key:"emergency", label:"🛡️ 应急金", color:"#f87171" },
+  { key:"surgery",   label:"👁️ 眼科手术", color:"#c084fc" },
+  { key:"travel",    label:"✈️ 旅游基金", color:"#38bdf8" },
+  { key:"yuebao",    label:"💰 余额宝(投资池)", color:"#34d399" },
+  { key:"funds",     label:"📈 定投基金", color:"#4ade80" },
+  { key:"ammo",      label:"🎯 弹药池", color:"#f59e0b" },
+  { key:"carfund",   label:"🚗 汽车摊销", color:"#fb923c" },
+];
+
+const DEFAULT_SETTINGS = {
+  salary: 5250, parttime: 700,
+  living: 1750, car: 667,
+  poolDeposit: 1100,   // 工资存入投资池
+  dcaDaily: 76,        // 华安10+大成33+摩根33
+  dcaMonthly: 1596,
+  poolPhase2: 1596,    // 存款投完后工资投入
+};
+
+const DEFAULT_PLAN = [
+  { id:"p1", text:"月初：工资存入余额宝(投资池)", amt:"¥1,100", note:"DCA自动扣划来源" },
+  { id:"p2", text:"月初：余下全部存入弹药池", amt:"¥1,733", note:"余额宝、弹药外的剩余" },
+  { id:"p3", text:"确认定投正常：华安¥10/大成¥33/摩根¥33", amt:"¥76/日", note:"每交易日自动" },
+  { id:"p4", text:"汽车摊销转入专项账户", amt:"¥667", note:"备9月保养、明年3月保险" },
+  { id:"p5", text:"兼职收入到账后转入应急金", amt:"≈¥700", note:"不固定" },
+  { id:"p6", text:"月末：录入本月各账户余额", amt:"—", note:"在「录入」页完成" },
+];
+
+function load(key, def) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; }
+  catch(e){ return def; }
+}
+function save(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ toast("存储失败"); } }
+
+let months = load("cfo_months", null);
+let settings = load("cfo_settings", DEFAULT_SETTINGS);
+
+// 首次运行预置6月数据
+if (!months) {
+  months = [{
+    month:"2026-06",
+    salary:5250, parttime:700,
+    living:1750, otherExpense:0, otherDesc:"",
+    accounts:{ emergency:10000, surgery:20000, travel:2500, yuebao:11441, funds:2083, ammo:1733, carfund:667 },
+    notes:"建仓后首个完整月。定投改33/日，存款池约24个月投完。",
+    plan:{}
+  }];
+  save("cfo_months", months);
+}
+
+function totalOf(m){ return ACCOUNTS.reduce((s,a)=> s + (Number(m.accounts[a.key])||0), 0); }
+function fmt(n){ return "¥" + Math.round(n).toLocaleString(); }
+function curMonth(){ return months[months.length-1]; }
+function nextMonthStr(ym){ let [y,mo]=ym.split("-").map(Number); mo++; if(mo>12){mo=1;y++;} return y+"-"+String(mo).padStart(2,"0"); }
+function cnMonth(ym){ return ym.split("-")[1].replace(/^0/,"")+"月"; }
+
+// ============ 视图 ============
+function renderOverview(){
+  const m = curMonth();
+  const tot = totalOf(m);
+  const prev = months.length>1 ? totalOf(months[months.length-2]) : tot;
+  const chg = tot - prev;
+  const invest = (Number(m.accounts.funds)||0);
+  document.getElementById("hdrTitle").textContent = cnMonth(m.month)+"资产台账";
+  document.getElementById("hdrSub").textContent = m.month.replace("-","年")+"月 · 本地存储";
+
+  let accRows = ACCOUNTS.map(a=>`
+    <div class="row">
+      <div><span class="label">${a.label}</span></div>
+      <span class="amt" style="color:${(Number(m.accounts[a.key])||0)===0?'#475569':a.color}">${fmt(Number(m.accounts[a.key])||0)}</span>
+    </div>`).join("");
+
+  document.getElementById("v-overview").innerHTML = `
+    <div class="card" style="background:linear-gradient(135deg,#1e3a5f,#0f2744);border:1px solid #2d5a8e">
+      <div class="card-title" style="color:#60a5fa">${cnMonth(m.month)}总资产</div>
+      <div class="big-num" style="color:#60a5fa">${fmt(tot)}</div>
+      <div style="font-size:12px;margin-top:6px;color:${chg>=0?'#4ade80':'#f87171'}">
+        较上月 ${chg>=0?'▲ +':'▼ '}${fmt(Math.abs(chg))}
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-bottom:12px">
+      <div class="stat"><div class="k">已投基金(成本)</div><div class="v" style="color:#4ade80">${fmt(invest)}</div></div>
+      <div class="stat"><div class="k">弹药池(待投)</div><div class="v" style="color:#f59e0b">${fmt(Number(m.accounts.ammo)||0)}</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">资产趋势（最多36个月）</div>
+      ${chartSVG()}
+    </div>
+
+    <div class="card">
+      <div class="card-title">${cnMonth(m.month)}各账户余额</div>
+      ${accRows}
+      <div class="total-row"><span class="label">合计</span><span class="amt">${fmt(tot)}</span></div>
+    </div>
+
+    <div class="card" style="background:#1c1007;border:1px solid #92400e">
+      <div class="card-title" style="color:#f59e0b">🥇 黄金触发 & 加仓提醒</div>
+      <div class="row"><span class="note">黄金跌破¥900/g → 弹药池建仓(目标10%)</span></div>
+      <div class="row"><span class="note">市场回撤≥20% → 弹药池集中加仓</span></div>
+      <div class="row" style="border:none"><span class="note">存款池约24个月投完，届时工资投入¥1,100→¥1,596，弹药池相应减¥496</span></div>
+    </div>
+  `;
+}
+
+function chartSVG(){
+  const data = months.slice(-36).map(m=>({ x:cnMonth(m.month), y:totalOf(m) }));
+  if(data.length<2) return `<div class="empty">至少2个月数据后显示趋势</div>`;
+  const W=420,H=150,P=30;
+  const ys=data.map(d=>d.y), min=Math.min(...ys)*0.97, max=Math.max(...ys)*1.03;
+  const px=i=> P + i*(W-2*P)/(data.length-1);
+  const py=v=> H-P - (v-min)/(max-min||1)*(H-2*P);
+  let path=data.map((d,i)=> (i?"L":"M")+px(i)+" "+py(d.y)).join(" ");
+  let dots=data.map((d,i)=> `<circle cx="${px(i)}" cy="${py(d.y)}" r="3" fill="#60a5fa"/>`).join("");
+  let labels=data.map((d,i)=> (i%Math.ceil(data.length/6)===0||i===data.length-1)?`<text x="${px(i)}" y="${H-8}" fill="#475569" font-size="9" text-anchor="middle">${d.x}</text>`:"").join("");
+  return `<svg viewBox="0 0 ${W} ${H}">
+    <path d="${path}" fill="none" stroke="#60a5fa" stroke-width="2"/>
+    <path d="${path} L ${px(data.length-1)} ${H-P} L ${px(0)} ${H-P} Z" fill="#60a5fa" opacity="0.08"/>
+    ${dots}${labels}
+  </svg>`;
+}
+
+function renderEntry(){
+  const last = curMonth();
+  const suggested = nextMonthStr(last.month);
+  const a = last.accounts;
+  document.getElementById("v-entry").innerHTML = `
+    <div class="card">
+      <div class="card-title">录入 / 更新月度数据</div>
+      <label class="field"><span class="flabel">月份 (YYYY-MM)</span>
+        <input id="f-month" value="${suggested}"></label>
+      <div class="grid2">
+        <label class="field"><span class="flabel">底薪收入</span><input id="f-salary" type="number" value="${settings.salary}"></label>
+        <label class="field"><span class="flabel">兼职收入</span><input id="f-parttime" type="number" value="${settings.parttime}"></label>
+      </div>
+      <div class="grid2">
+        <label class="field"><span class="flabel">生活支出</span><input id="f-living" type="number" value="${settings.living}"></label>
+        <label class="field"><span class="flabel">其他大额支出</span><input id="f-other" type="number" value="0"></label>
+      </div>
+      <label class="field"><span class="flabel">其他支出说明</span><input id="f-otherdesc" placeholder="如：旅游、家电…"></label>
+    </div>
+
+    <div class="card">
+      <div class="card-title">各账户余额（月末）</div>
+      ${ACCOUNTS.map(ac=>`
+        <label class="field"><span class="flabel">${ac.label}</span>
+          <input id="acc-${ac.key}" type="number" value="${Number(a[ac.key])||0}"></label>`).join("")}
+      <label class="field"><span class="flabel">备注</span>
+        <textarea id="f-notes" rows="2" placeholder="本月情况、市场变化、加仓动作…"></textarea></label>
+      <button class="primary" onclick="saveMonth()">保存本月台账</button>
+      <button class="ghost" onclick="autofill()">按计划自动估算账户（基于上月）</button>
+    </div>
+  `;
+}
+
+function autofill(){
+  // 基于上月+计划规则，预填本月账户预估
+  const last = curMonth();
+  const a = {...last.accounts};
+  a.yuebao = (Number(a.yuebao)||0) + settings.poolDeposit - settings.dcaMonthly;
+  a.funds  = (Number(a.funds)||0) + settings.dcaMonthly;
+  const salary = Number(document.getElementById("f-salary").value)||settings.salary;
+  const ammoAdd = salary - settings.living - settings.car - settings.poolDeposit;
+  a.ammo   = (Number(a.ammo)||0) + ammoAdd;
+  a.carfund= (Number(a.carfund)||0) + settings.car;
+  a.emergency = (Number(a.emergency)||0) + (Number(document.getElementById("f-parttime").value)||0);
+  ACCOUNTS.forEach(ac=>{ document.getElementById("acc-"+ac.key).value = Math.round(Number(a[ac.key])||0); });
+  toast("已按计划预填，请核对调整");
+}
+
+function saveMonth(){
+  const ym = document.getElementById("f-month").value.trim();
+  if(!/^\d{4}-\d{2}$/.test(ym)){ toast("月份格式应为 YYYY-MM"); return; }
+  const rec = {
+    month:ym,
+    salary:Number(document.getElementById("f-salary").value)||0,
+    parttime:Number(document.getElementById("f-parttime").value)||0,
+    living:Number(document.getElementById("f-living").value)||0,
+    otherExpense:Number(document.getElementById("f-other").value)||0,
+    otherDesc:document.getElementById("f-otherdesc").value,
+    accounts:{}, notes:document.getElementById("f-notes").value, plan:{}
+  };
+  ACCOUNTS.forEach(ac=> rec.accounts[ac.key]=Number(document.getElementById("acc-"+ac.key).value)||0);
+  const idx = months.findIndex(m=>m.month===ym);
+  if(idx>=0) months[idx]=rec; else { months.push(rec); months.sort((a,b)=>a.month.localeCompare(b.month)); }
+  if(months.length>36) months = months.slice(-36);
+  save("cfo_months", months);
+  toast("已保存 "+ym);
+  switchView("overview");
+}
+
+function renderPlan(){
+  const m = curMonth();
+  const planState = m.plan || {};
+  const done = DEFAULT_PLAN.filter(p=>planState[p.id]).length;
+  document.getElementById("v-plan").innerHTML = `
+    <div class="card" style="background:#0a1520;border:1px solid #1e3a5f">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:#60a5fa">${cnMonth(m.month)}执行计划</div>
+        <div style="font-size:11px;color:${done===DEFAULT_PLAN.length?'#4ade80':'#60a5fa'};font-weight:700">${done===DEFAULT_PLAN.length?'✓ 全部完成':done+'/'+DEFAULT_PLAN.length}</div>
+      </div>
+      <div style="background:#1e293b;border-radius:4px;height:4px;margin-bottom:6px">
+        <div style="width:${done/DEFAULT_PLAN.length*100}%;height:100%;background:#60a5fa;border-radius:4px;transition:width .3s"></div>
+      </div>
+      ${DEFAULT_PLAN.map(p=>`
+        <div class="task ${planState[p.id]?'done':''}" onclick="togglePlan('${p.id}')">
+          <div class="checkbox ${planState[p.id]?'done':''}"></div>
+          <div style="flex:1">
+            <div style="display:flex;justify-content:space-between;gap:8px">
+              <span class="ttext">${p.text}</span>
+              <span class="tamt" style="color:#60a5fa">${p.amt}</span>
+            </div>
+            <div class="tnote">${p.note}</div>
+          </div>
+        </div>`).join("")}
+    </div>
+    <div class="card" style="background:#0d2218;border:1px solid #166534">
+      <div class="card-title" style="color:#4ade80">月定投构成</div>
+      <div class="row"><span class="note">工资投入(原始定投)</span><span class="amt" style="color:#34d399">¥1,100</span></div>
+      <div class="row"><span class="note">存款池补差(加仓)</span><span class="amt" style="color:#22d3ee">¥496</span></div>
+      <div class="row" style="border:none"><span class="note">合计 ≈ ¥1,596/月（¥76/日）</span></div>
+    </div>
+  `;
+}
+
+function togglePlan(id){
+  const m = curMonth();
+  if(!m.plan) m.plan={};
+  m.plan[id] = !m.plan[id];
+  save("cfo_months", months);
+  renderPlan();
+}
+
+function renderHistory(){
+  const list = [...months].reverse();
+  document.getElementById("v-history").innerHTML = `
+    <div class="card">
+      <div class="card-title">历史台账（最多保留36个月）</div>
+      ${list.length? list.map(m=>{
+        const tot=totalOf(m);
+        const idx=months.findIndex(x=>x.month===m.month);
+        const prev=idx>0?totalOf(months[idx-1]):tot;
+        const chg=tot-prev;
+        return `<div class="hist-item" onclick="viewMonth('${m.month}')">
+          <div style="display:flex;justify-content:space-between">
+            <span class="hm">${m.month}</span>
+            <span class="ht">${fmt(tot)}</span>
+          </div>
+          <div class="hc" style="color:${chg>=0?'#4ade80':'#f87171'}">${chg>=0?'+':''}${fmt(chg)} · 收入¥${(m.salary+m.parttime).toLocaleString()}</div>
+          ${m.notes?`<div style="font-size:10px;color:#64748b;margin-top:4px">${m.notes}</div>`:""}
+        </div>`;
+      }).join("") : `<div class="empty">暂无历史记录</div>`}
+    </div>
+    <button class="ghost" onclick="exportData()">导出全部数据(备份)</button>
+    <button class="ghost" onclick="resetData()" style="color:#f87171;border-color:#7f1d1d">清空所有数据</button>
+  `;
+}
+
+function viewMonth(ym){
+  const m = months.find(x=>x.month===ym);
+  if(!m) return;
+  let rows = ACCOUNTS.map(a=>`<div class="row"><span class="label">${a.label}</span><span class="amt" style="color:${a.color}">${fmt(Number(m.accounts[a.key])||0)}</span></div>`).join("");
+  alert(`${ym} 台账\n\n总资产：${fmt(totalOf(m))}\n收入：底薪¥${m.salary} 兼职¥${m.parttime}\n生活支出：¥${m.living}${m.otherExpense?` 其他¥${m.otherExpense}(${m.otherDesc})`:""}\n\n备注：${m.notes||"无"}`);
+}
+
+function exportData(){
+  const blob = new Blob([JSON.stringify({months,settings},null,2)],{type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a=document.createElement("a"); a.href=url; a.download="资产台账备份_"+new Date().toISOString().slice(0,10)+".json"; a.click();
+  toast("已导出备份");
+}
+
+function resetData(){
+  if(confirm("确认清空所有月度数据？此操作不可恢复（建议先导出备份）")){
+    localStorage.removeItem("cfo_months");
+    location.reload();
+  }
+}
+
+// ============ 导航 ============
+function switchView(v){
+  document.querySelectorAll(".view").forEach(el=>el.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(el=>el.classList.remove("active"));
+  document.getElementById("v-"+v).classList.add("active");
+  document.querySelector('.tab[data-v="'+v+'"]').classList.add("active");
+  if(v==="overview") renderOverview();
+  if(v==="entry") renderEntry();
+  if(v==="plan") renderPlan();
+  if(v==="history") renderHistory();
+  window.scrollTo(0,0);
+}
+document.querySelectorAll(".tab").forEach(t=> t.addEventListener("click",()=>switchView(t.dataset.v)));
+
+let toastTimer;
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"),2000);
+}
+
+renderOverview();
+</script>
+
+<script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("service-worker.js").catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
