@@ -1,5 +1,5 @@
-// 资产台账 Service Worker v2 —— 网络优先，避免缓存损坏卡死
-const CACHE = "cfo-ledger-v2";
+// 资产台账 Service Worker v3 —— 网络优先，避免缓存损坏卡死
+const CACHE = "cfo-ledger-v3";
 const STATIC = ["./icon-192.png", "./icon-512.png", "./manifest.json"];
 
 // 安装：只预缓存静态资源（不缓存 HTML，避免页面被旧缓存锁死）

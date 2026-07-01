@@ -90,13 +90,13 @@
 
   .toast{position:fixed;bottom:92px;left:50%;transform:translateX(-50%);background:var(--ink);color:#F4F1EA;padding:10px 20px;border-radius:22px;font-size:13px;z-index:50;opacity:0;transition:opacity .3s;pointer-events:none;}
   .toast.show{opacity:1;}
-  .modal-mask{position:fixed;inset:0;background:rgba(43,38,32,0.4);backdrop-filter:blur(2px);z-index:100;display:none;align-items:flex-end;justify-content:center;}
-  .modal-mask.show{display:flex;}
-  .modal-sheet{background:var(--bg);width:100%;max-width:440px;border-radius:22px 22px 0 0;max-height:84vh;transform:translateY(100%);transition:transform .3s cubic-bezier(.3,.8,.4,1);position:relative;overflow:hidden;}
-  .modal-mask.show .modal-sheet{transform:translateY(0);}
+  .modal-mask{position:fixed;top:0;left:0;right:0;bottom:0;width:100%;height:100%;background:rgba(43,38,32,0.45);z-index:1000;display:none;}
+  .modal-mask.show{display:block;}
+  .modal-sheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%) translateY(100%);width:100%;max-width:440px;background:var(--bg);border-radius:22px 22px 0 0;max-height:85vh;transition:transform .3s cubic-bezier(.3,.8,.4,1);overflow:hidden;box-shadow:0 -4px 24px rgba(43,38,32,0.18);}
+  .modal-mask.show .modal-sheet{transform:translateX(-50%) translateY(0);}
   .modal-grip{width:38px;height:4px;background:var(--faint);border-radius:3px;margin:14px auto 4px;}
-  .modal-scroll{overflow-y:auto;max-height:84vh;padding:6px 20px 30px;}
-  .modal-close{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;background:rgba(231,224,210,0.7);backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;}
+  .modal-scroll{overflow-y:auto;max-height:calc(85vh - 24px);padding:6px 20px 30px;-webkit-overflow-scrolling:touch;}
+  .modal-close{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;background:#E7E0D2;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;}
   .modal-close svg{width:16px;height:16px;stroke:var(--ink2);stroke-width:2;fill:none;}
   .eye{cursor:pointer;}
   .split-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;}
@@ -167,7 +167,9 @@ function saveLS(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}
 let months = load("cfo_months", null);
 if(!months){months=SEED;saveLS("cfo_months",months);}
 // 弹药池 / 其他支出 的拆分（可编辑，此消彼长）
-const SPLIT_POOL = SET.salary - SET.living - SET.car - SET.poolDeposit; // 1733
+// 计划页可自定义"总额"(工资)：优先读当月 planSalary，否则用默认底薪
+function planSalary(){ const m=months[months.length-1]; return (m&&m.planSalary!=null)?m.planSalary:SET.salary; }
+function splitPool(){ return planSalary() - SET.living - SET.car - SET.poolDeposit; }
 let split = load("cfo_split", {otherName:"其他支出", other:0}); // other 部分金额，弹药池=POOL-other
 let form=null;
 
@@ -189,7 +191,7 @@ function renderOverview(){
   document.getElementById("hdrEyebrow").textContent="资产台账";
   const numStr=Math.round(tot).toLocaleString();
   document.getElementById("v-overview").innerHTML=`
-    <div class="hero-label">总资产 · ${cnMonth(m.month)}
+    <div class="hero-label">总资产 · ${m.month}
       <span class="eye" onclick="hideAmount=!hideAmount;renderOverview()">${ICONS.eye}</span>
     </div>
     <div class="hero-num">¥${maskNum(numStr)}<span class="dec">.00</span></div>
@@ -351,14 +353,16 @@ function tapNode(cid,i){
 
 function renderEntry(){
   const last=months[months.length-1];
-  const f=form||{month:nextMonth(last.month),salary:SET.salary,parttime:SET.parttime,living:SET.living,other:0,otherDesc:"",notes:"",accounts:{...last.accounts}};
+  const f=form||{month:last.month,salary:last.salary,parttime:last.parttime,living:last.living,other:last.otherExpense||0,otherDesc:last.otherDesc||"",notes:last.notes||"",accounts:{...last.accounts}};
+  f.month=last.month; // 月份锁定为最新月，不可改
   form=f;
   const fld=(label,id,val,type="text",ph="")=>`<label class="fld"><span class="fl">${label}</span><input id="${id}" type="${type}" value="${val}" placeholder="${ph}"></label>`;
   document.getElementById("hdrEyebrow").textContent="录入";
   document.getElementById("v-entry").innerHTML=`
     <div class="card">
       <div class="card-t">月度收支</div>
-      ${fld("月份 (YYYY-MM)","f-month",f.month)}
+      <label class="fld"><span class="fl">月份</span><input id="f-month" type="text" value="${f.month}" readonly disabled style="opacity:.6;background:#EFEBE2"></label>
+      <div class="mini" style="margin:-4px 0 10px;color:var(--mute)">月份由「计划」全部完成后结转推进，不可手动修改</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         ${fld("底薪收入","f-salary",f.salary,"number")}
         ${fld("兼职收入","f-parttime",f.parttime,"number")}
@@ -379,7 +383,8 @@ function renderEntry(){
   `;
 }
 function readForm(){
-  form={month:document.getElementById("f-month").value,salary:+document.getElementById("f-salary").value||0,
+  const lockedMonth=months[months.length-1].month;
+  form={month:lockedMonth,salary:+document.getElementById("f-salary").value||0,
     parttime:+document.getElementById("f-parttime").value||0,living:+document.getElementById("f-living").value||0,
     other:+document.getElementById("f-other").value||0,otherDesc:document.getElementById("f-otherdesc").value,
     notes:document.getElementById("f-notes").value,accounts:{}};
@@ -387,7 +392,8 @@ function readForm(){
 }
 function autofill(){
   readForm();
-  const last=months[months.length-1];const a={...last.accounts};
+  const base=months.length>=2?months[months.length-2]:months[months.length-1];
+  const a={...base.accounts};
   a.yuebao=(+a.yuebao||0)+SET.poolDeposit-SET.dcaMonthly;
   a.funds=(+a.funds||0)+SET.dcaMonthly;
   a.ammo=(+a.ammo||0)+(form.salary-SET.living-SET.car-SET.poolDeposit);
@@ -398,9 +404,11 @@ function autofill(){
 }
 function saveMonth(){
   readForm();
-  if(!/^\d{4}-\d{2}$/.test(form.month)){toast("月份格式应为 YYYY-MM");return;}
-  const rec={month:form.month,salary:form.salary,parttime:form.parttime,living:form.living,otherExpense:form.other,otherDesc:form.otherDesc,accounts:{...form.accounts},notes:form.notes,plan:{}};
-  const idx=months.findIndex(m=>m.month===rec.month);
+  const idx=months.findIndex(m=>m.month===form.month);
+  const oldPlan=idx>=0?(months[idx].plan||{}):{};
+  const oldRolled=idx>=0?months[idx]._rolled:undefined;
+  const rec={month:form.month,salary:form.salary,parttime:form.parttime,living:form.living,otherExpense:form.other,otherDesc:form.otherDesc,accounts:{...form.accounts},notes:form.notes,plan:oldPlan};
+  if(oldRolled)rec._rolled=oldRolled;
   if(idx>=0)months[idx]=rec;else{months.push(rec);months.sort((a,b)=>a.month.localeCompare(b.month));}
   if(months.length>36)months=months.slice(-36);
   saveLS("cfo_months",months);form=null;toast("已保存 "+rec.month);switchView("overview");
@@ -410,8 +418,8 @@ function renderPlan(){
   const m=months[months.length-1];const ps=m.plan||{};
   const done=PLAN.filter(p=>ps[p.id]).length;
   document.getElementById("hdrEyebrow").textContent="计划";
-  const otherAmt=Math.max(0,Math.min(SPLIT_POOL, Number(split.other)||0));
-  const ammoAmt=SPLIT_POOL-otherAmt;
+  const otherAmt=Math.max(0,Math.min(splitPool(), Number(split.other)||0));
+  const ammoAmt=splitPool()-otherAmt;
   const salItems=[
     {label:"生活支出",value:SET.living,color:"#D8C29A"},
     {label:"汽车摊销",value:SET.car,color:"#C9A876",link:"task-p4"},
@@ -420,10 +428,18 @@ function renderPlan(){
   ];
   if(otherAmt>0) salItems.push({label:split.otherName||"其他支出",value:otherAmt,color:"#B89666",link:"task-pOther"});
   document.getElementById("v-plan").innerHTML=`
+    <div class="card">
+      <div class="card-t">本月总额（工资）</div>
+      <div class="mini" style="margin-bottom:10px">工资每月不固定，可在此修改；下方分配会自动重算</div>
+      <div class="split-row">
+        <span class="split-name">当月工资总额</span>
+        <span style="display:flex;align-items:center;gap:4px">¥<input class="split-edit-amt" id="pl-salary" type="text" inputmode="numeric" value="${planSalary()}" onfocus="this.select()" oninput="liveSalary(this.value)" onblur="commitSalary()" style="width:96px"></span>
+      </div>
+    </div>
     <div id="planDonutHost">${donutBlock("本月工资分配占比", salItems)}</div>
     <div class="card">
       <div class="card-t">弹药池 / 其他支出分配</div>
-      <div class="mini" style="margin-bottom:10px">余下 ¥${SPLIT_POOL.toLocaleString()} 在两者间分配（此消彼长）</div>
+      <div class="mini" style="margin-bottom:10px">余下 ¥${splitPool().toLocaleString()} 在两者间分配（此消彼长）</div>
       <div class="split-row">
         <span class="split-name">弹药池</span>
         <span class="split-val" id="sp-ammo" style="color:var(--gold)">¥${ammoAmt.toLocaleString()}</span>
@@ -432,7 +448,7 @@ function renderPlan(){
         <input class="split-edit-name" id="sp-name" value="${(split.otherName||"其他支出").replace(/"/g,'')}" onchange="updateSplitName(this.value)">
         <span style="display:flex;align-items:center;gap:4px">¥<input class="split-edit-amt" id="sp-amt" type="text" inputmode="numeric" value="${otherAmt}" onfocus="this.select()" oninput="liveSplit(this.value)" onblur="commitSplit()"></span>
       </div>
-      <input type="range" class="split-slider" id="sp-slider" min="0" max="${SPLIT_POOL}" step="10" value="${otherAmt}" oninput="sliderSplit(this.value)" style="width:100%;margin-top:12px;accent-color:var(--gold)">
+      <input type="range" class="split-slider" id="sp-slider" min="0" max="${splitPool()}" step="10" value="${otherAmt}" oninput="sliderSplit(this.value)" style="width:100%;margin-top:12px;accent-color:var(--gold)">
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -469,9 +485,9 @@ function renderPlan(){
   `;
 }
 function _applySplit(other){
-  other=Math.max(0,Math.min(SPLIT_POOL,Math.round(Number(other)||0)));
+  other=Math.max(0,Math.min(splitPool(),Math.round(Number(other)||0)));
   split.other=other; saveLS("cfo_split",split);
-  const ammo=SPLIT_POOL-other;
+  const ammo=splitPool()-other;
   // 1) 弹药池数字
   const ammoEl=document.getElementById("sp-ammo"); if(ammoEl) ammoEl.textContent="¥"+ammo.toLocaleString();
   // 2) 执行计划里弹药池那行的金额
@@ -483,16 +499,36 @@ function _applySplit(other){
   if((other>0)!==hasOtherRow){ renderPlanPreserveInput(); }
   else if(other>0){ const r=document.getElementById("task-pOther"); if(r){const ta=r.querySelector(".ta"); if(ta) ta.textContent="¥"+other.toLocaleString();} }
 }
-function liveSplit(v){ // 文字输入：不重建输入框
-  _applySplit(v);
+function liveSalary(v){ // 修改工资总额：实时重算分配
+  const m=months[months.length-1];
+  let sal=Math.max(0,Math.round(Number(v)||0));
+  m.planSalary=sal; saveLS("cfo_months",months);
+  // 工资变了 → 可分配池变了 → 其他支出若超出则夹紧
+  const pool=splitPool();
+  if((Number(split.other)||0)>pool){ split.other=Math.max(0,pool); saveLS("cfo_split",split); }
+  // 整体重绘计划页（保住工资输入框焦点）
+  const el=document.getElementById("pl-salary");
+  const focused=document.activeElement===el;
+  const caret=el&&el.selectionStart!=null?el.selectionStart:null;
+  renderPlan();
+  if(focused){const e=document.getElementById("pl-salary");if(e){e.focus();try{e.setSelectionRange(caret,caret);}catch(_){}}}
 }
+function commitSalary(){
+  const m=months[months.length-1];
+  const el=document.getElementById("pl-salary");
+  let sal=Math.max(0,Math.round(Number(el?el.value:0)||0));
+  if(sal<=0) sal=SET.salary; // 留空则回到默认底薪
+  m.planSalary=sal; saveLS("cfo_months",months);
+  renderPlan();
+}
+function liveSplit(v){ _applySplit(v); }
 function sliderSplit(v){ // 滑块：同步文字框
   const amt=document.getElementById("sp-amt"); if(amt) amt.value=Math.round(Number(v)||0);
   _applySplit(v);
 }
 function commitSplit(){ // 失焦：规整数值并回填
   const amt=document.getElementById("sp-amt");
-  let other=Math.max(0,Math.min(SPLIT_POOL,Math.round(Number(amt?amt.value:0)||0)));
+  let other=Math.max(0,Math.min(splitPool(),Math.round(Number(amt?amt.value:0)||0)));
   if(amt) amt.value=other;
   const sl=document.getElementById("sp-slider"); if(sl) sl.value=other;
   _applySplit(other);
@@ -519,7 +555,48 @@ function renderPlanPreserveInput(){
   if(focused){const e=document.getElementById("sp-amt");if(e){e.value=val;e.focus();try{e.setSelectionRange(caret,caret);}catch(_){}}}
 }
 function updateSplitName(v){ split.otherName=(v||"其他支出").trim()||"其他支出"; saveLS("cfo_split",split); renderPlan(); }
-function togglePlan(id){const m=months[months.length-1];m.plan=m.plan||{};m.plan[id]=!m.plan[id];saveLS("cfo_months",months);renderPlan();}
+function planAllDone(m){
+  const ps=m.plan||{};
+  const need=PLAN.map(p=>p.id);
+  const otherAmt=Math.max(0,Math.min(splitPool(),Number(split.other)||0));
+  if(otherAmt>0) need.push("pOther");
+  return need.every(id=>ps[id]);
+}
+function togglePlan(id){
+  const m=months[months.length-1];
+  m.plan=m.plan||{};
+  m.plan[id]=!m.plan[id];
+  saveLS("cfo_months",months);
+  renderPlan();
+  // 全部勾选 → 提示结转下月
+  if(planAllDone(m) && !m._rolled){
+    setTimeout(()=>{
+      const nm=nextMonth(m.month);
+      if(confirm("本月计划已全部完成！\n是否结转到 "+nm+" ？\n\n将新建下月台账，继承本月各账户余额，可在「录入」页调整。")){
+        rollToNextMonth();
+      }
+    },300);
+  }
+}
+function rollToNextMonth(){
+  const m=months[months.length-1];
+  const nm=nextMonth(m.month);
+  if(months.find(x=>x.month===nm)){ toast(nm+" 已存在"); switchView("overview"); return; }
+  const rec={
+    month:nm,
+    salary:m.salary||SET.salary,
+    parttime:m.parttime||SET.parttime,
+    living:m.living||SET.living,
+    otherExpense:0, otherDesc:"",
+    accounts:{...m.accounts},   // 继承上月余额
+    notes:"", plan:{}
+  };
+  months.push(rec);
+  if(months.length>36) months=months.slice(-36);
+  saveLS("cfo_months",months);
+  toast("已结转至 "+nm);
+  switchView("overview");
+}
 
 function renderHistory(){
   document.getElementById("hdrEyebrow").textContent="历史";
@@ -625,11 +702,23 @@ function switchView(v){
 }
 let tt;function toast(m){const t=document.getElementById("toast");t.textContent=m;t.classList.add("show");clearTimeout(tt);tt=setTimeout(()=>t.classList.remove("show"),2000);}
 
-renderOverview();renderTabs("overview");
+try{ renderOverview();renderTabs("overview"); }catch(e){ document.body.innerHTML='<div style="padding:40px;text-align:center;color:#6B6357;font-family:sans-serif"><p>加载出错，正在尝试修复…</p></div>'; if("caches" in window){caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());location.reload();});}else location.reload();});} }
 
 // SW + 自救
 if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(()=>{});});}
-window.addEventListener("load",()=>{setTimeout(()=>{const ov=document.getElementById("v-overview");const stuck=!ov||ov.innerHTML.trim()==="";if(stuck&&!sessionStorage.getItem("cfo_rec")){sessionStorage.setItem("cfo_rec","1");if("caches" in window){caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>location.reload());}else location.reload();}},8000);});
+// 卡启动自救：4秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
+window.addEventListener("load",()=>{setTimeout(()=>{
+  const ov=document.getElementById("v-overview");
+  const stuck=!ov||ov.innerHTML.trim()==="";
+  if(stuck&&!sessionStorage.getItem("cfo_rec")){
+    sessionStorage.setItem("cfo_rec","1");
+    const done=()=>location.reload();
+    const clearAll=()=>{ if("caches" in window){ caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{
+      if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{Promise.all(rs.map(r=>r.unregister())).then(done);});}else done();
+    }); } else done(); };
+    clearAll();
+  }
+},4000);});
 </script>
 </body>
 </html>
