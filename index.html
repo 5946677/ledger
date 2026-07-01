@@ -792,14 +792,12 @@ let tt;function toast(m){const t=document.getElementById("toast");t.textContent=
 
 try{ renderOverview();renderTabs("overview"); }catch(e){ document.body.innerHTML='<div style="padding:40px;text-align:center;color:#6B6357;font-family:sans-serif"><p>加载出错，正在尝试修复…</p></div>'; if("caches" in window){caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());location.reload();});}else location.reload();});} }
 
-// SW + 自救
-// SW 延迟注册：等首屏完全渲染后再注册，避免在 TWA 首次导航时抢占/卡死
-// 不再注册 service worker（TWA 里 SW 会卡死首屏）。同时主动注销历史遗留的 SW + 清缓存，彻底根治卡启动。
+// SW 注册：延迟到首屏渲染后再注册极简 SW（仅用于让 Chrome 识别为可安装 PWA；温和、不接管、不卡）
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+  window.addEventListener("load",()=>{
+    setTimeout(()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); }, 2000);
+  });
 }
-if("caches" in window){ caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{}); }
-// （已移除自动重载自救逻辑，避免 TWA 里反复重载卡死）
 </script>
 </body>
 </html>
