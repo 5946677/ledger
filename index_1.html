@@ -33,6 +33,13 @@
   .pill{display:inline-block;margin-top:14px;background:#EFE7D8;color:var(--gold);font-size:11px;padding:4px 11px;border-radius:20px;}
 
   .chart-wrap{margin:18px 0 6px;}
+  .month-banner{background:linear-gradient(135deg,#A8865C 0%,#8A6D45 100%);border-radius:16px;padding:18px 22px;margin-top:4px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 16px rgba(168,134,92,0.28);}
+  .month-banner .mb-label{font-size:12px;color:#F0E6D4;letter-spacing:3px;}
+  .month-banner .mb-value{font-size:26px;font-weight:700;color:#fff;letter-spacing:1px;font-variant-numeric:tabular-nums;}
+  .split-slider{-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;background:#E4D9C2;outline:none;}
+  .split-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:20px;height:20px;border-radius:50%;background:#A8865C;border:2px solid #F4F1EA;box-shadow:0 1px 4px rgba(138,109,69,0.5);cursor:pointer;}
+  .split-slider::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#A8865C;border:2px solid #F4F1EA;box-shadow:0 1px 4px rgba(138,109,69,0.5);cursor:pointer;}
+  .split-slider::-moz-range-track{height:6px;border-radius:3px;background:#E4D9C2;}
   .chart-x{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-top:4px;}
 
   .sec-title{font-size:13px;color:var(--ink2);font-weight:600;margin:24px 0 6px;}
@@ -62,7 +69,8 @@
   button.primary:active{background:#967649;}
   button.ghost{background:transparent;color:var(--ink2);border:1px solid var(--line);border-radius:10px;padding:11px;font-size:13px;font-family:inherit;cursor:pointer;width:100%;margin-top:10px;}
 
-  .task{display:flex;gap:13px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer;}
+  .task{display:flex;gap:16px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--line);cursor:pointer;}
+  .task-body{flex:1;}
   .task:last-child{border-bottom:none;}
   .chk{width:22px;height:22px;border-radius:7px;border:1.6px solid var(--faint);flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;transition:.15s;}
   .chk.on{background:var(--gold);border-color:var(--gold);}
@@ -169,8 +177,10 @@ if(!months){months=SEED;saveLS("cfo_months",months);}
 // 弹药池 / 其他支出 的拆分（可编辑，此消彼长）
 // 计划页可自定义"总额"(工资)：优先读当月 planSalary，否则用默认底薪
 function planSalary(){ const m=months[months.length-1]; return (m&&m.planSalary!=null)?m.planSalary:SET.salary; }
-function splitPool(){ return planSalary() - SET.living - SET.car - SET.poolDeposit; }
+function splitPool(){ return Math.max(0, planSalary() - SET.living - SET.car - SET.poolDeposit); }
 let split = load("cfo_split", {otherName:"其他支出", other:0}); // other 部分金额，弹药池=POOL-other
+// 月定投构成（可自定义）：工资投入 + 存款池补差 = 月定投总额；日定投 = 总额/交易日
+let dca = load("cfo_dca", {salaryInvest:1100, poolAdd:496, tradingDays:21});
 let form=null;
 
 const fmt=n=>"¥"+Math.round(n).toLocaleString();
@@ -200,7 +210,7 @@ function renderOverview(){
       <div><div class="k">已投基金(成本)</div><div class="v">${maskNum(fmt(Number(m.accounts.funds)||0))}</div></div>
       <div><div class="k">弹药池(待投)</div><div class="v">${maskNum(fmt(Number(m.accounts.ammo)||0))}</div></div>
     </div>
-    <div class="chart-wrap">${chart()}</div>
+    ${months.length>=2?`<div class="chart-wrap">${chart()}</div>`:""}
 
     ${donutBlock("资金占比", ACCOUNTS.map((a,i)=>({label:a.label.replace(/\(.*\)/,""),value:Number(m.accounts[a.key])||0,color:DONUT_COLORS[i%DONUT_COLORS.length],link:"accrow-"+a.key})).filter(x=>x.value>0))}
 
@@ -213,12 +223,31 @@ function renderOverview(){
       </div>`).join("")}
 
     <div class="card">
-      <div class="card-t">触发与提醒</div>
-      <div class="mini">· 黄金跌破 ¥900/g → 弹药池建仓（目标仓位约10%）<br>
-      · 市场回撤 ≥20% → 弹药池集中加仓<br>
-      · 存款池约24个月投完，届时工资投入 ¥1,100 → ¥1,596，弹药池相应减 ¥496</div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="card-t" style="margin:0">触发与提醒</div>
+        <span onclick="editAlerts()" style="font-size:12px;color:var(--gold);cursor:pointer">编辑</span>
+      </div>
+      <div class="mini" id="alertsView" style="margin-top:8px;white-space:pre-wrap;line-height:1.7">${alertsText()}</div>
     </div>
   `;
+}
+const DEFAULT_ALERTS="· 黄金跌破 ¥900/g → 弹药池建仓（目标仓位约10%）\n· 市场回撤 ≥20% → 弹药池集中加仓\n· 存款池约24个月投完，届时工资投入 ¥1,100 → ¥1,596，弹药池相应减 ¥496";
+function alertsText(){ const t=load("cfo_alerts",null); return (t==null?DEFAULT_ALERTS:t).replace(/</g,"&lt;"); }
+function editAlerts(){
+  const cur=load("cfo_alerts",null); const raw=(cur==null?DEFAULT_ALERTS:cur);
+  const view=document.getElementById("alertsView"); if(!view) return;
+  view.outerHTML=`<div id="alertsEdit" style="margin-top:8px">
+    <textarea id="alertsTa" rows="6" style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.7;padding:10px;border:1px solid var(--line);border-radius:10px;background:#FBFAF6;color:var(--ink);font-family:inherit;resize:vertical">${raw.replace(/</g,"&lt;")}</textarea>
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="ghost" style="flex:1;margin:0" onclick="saveAlerts()">保存</button>
+      <button class="ghost" style="flex:1;margin:0" onclick="renderOverview()">取消</button>
+    </div>
+  </div>`;
+}
+function saveAlerts(){
+  const ta=document.getElementById("alertsTa"); if(!ta) return;
+  saveLS("cfo_alerts", ta.value);
+  toast("已保存提醒"); renderOverview();
 }
 
 let donutSeq=0;
@@ -359,10 +388,12 @@ function renderEntry(){
   const fld=(label,id,val,type="text",ph="")=>`<label class="fld"><span class="fl">${label}</span><input id="${id}" type="${type}" value="${val}" placeholder="${ph}"></label>`;
   document.getElementById("hdrEyebrow").textContent="录入";
   document.getElementById("v-entry").innerHTML=`
+    <div class="month-banner">
+      <div class="mb-label">当前月份</div>
+      <div class="mb-value">${f.month}</div>
+    </div>
     <div class="card">
       <div class="card-t">月度收支</div>
-      <label class="fld"><span class="fl">月份</span><input id="f-month" type="text" value="${f.month}" readonly disabled style="opacity:.6;background:#EFEBE2"></label>
-      <div class="mini" style="margin:-4px 0 10px;color:var(--mute)">月份由「计划」全部完成后结转推进，不可手动修改</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         ${fld("底薪收入","f-salary",f.salary,"number")}
         ${fld("兼职收入","f-parttime",f.parttime,"number")}
@@ -418,14 +449,23 @@ function renderPlan(){
   const m=months[months.length-1];const ps=m.plan||{};
   const done=PLAN.filter(p=>ps[p.id]).length;
   document.getElementById("hdrEyebrow").textContent="计划";
-  const otherAmt=Math.max(0,Math.min(splitPool(), Number(split.other)||0));
-  const ammoAmt=splitPool()-otherAmt;
+  const sal=planSalary();
+  // 按优先级分配，每项不超过剩余工资，绝不为负
+  let remain=sal;
+  const take=(want)=>{const v=Math.max(0,Math.min(remain,want));remain-=v;return v;};
+  const vLiving=take(SET.living);
+  const vCar=take(SET.car);
+  const vPool=take(SET.poolDeposit);
+  // 弹药池 + 其他支出 = 剩余可分配（remain），二者此消彼长
+  const poolLeft=Math.max(0,remain);
+  const otherAmt=Math.max(0,Math.min(poolLeft, Number(split.other)||0));
+  const ammoAmt=poolLeft-otherAmt;
   const salItems=[
-    {label:"生活支出",value:SET.living,color:"#D8C29A"},
-    {label:"汽车摊销",value:SET.car,color:"#C9A876",link:"task-p4"},
-    {label:"投资池",value:SET.poolDeposit,color:"#A8865C",link:"task-p1"},
+    {label:"生活支出",value:vLiving,color:"#D8C29A"},
+    {label:"汽车摊销",value:vCar,color:"#C9A876",link:"task-p4"},
+    {label:"投资池",value:vPool,color:"#A8865C",link:"task-p1"},
     {label:"弹药池",value:ammoAmt,color:"#9A7A4E",link:"task-p2"},
-  ];
+  ].filter(x=>x.value>0);
   if(otherAmt>0) salItems.push({label:split.otherName||"其他支出",value:otherAmt,color:"#B89666",link:"task-pOther"});
   document.getElementById("v-plan").innerHTML=`
     <div class="card">
@@ -433,7 +473,7 @@ function renderPlan(){
       <div class="mini" style="margin-bottom:10px">工资每月不固定，可在此修改；下方分配会自动重算</div>
       <div class="split-row">
         <span class="split-name">当月工资总额</span>
-        <span style="display:flex;align-items:center;gap:4px">¥<input class="split-edit-amt" id="pl-salary" type="text" inputmode="numeric" value="${planSalary()}" onfocus="this.select()" oninput="liveSalary(this.value)" onblur="commitSalary()" style="width:96px"></span>
+        <span style="display:flex;align-items:center;gap:8px">¥<input class="split-edit-amt" id="pl-salary" type="text" inputmode="numeric" value="${planSalary()}" onfocus="this.select()" oninput="liveSalary(this.value)" onblur="commitSalary()" style="width:96px"></span>
       </div>
     </div>
     <div id="planDonutHost">${donutBlock("本月工资分配占比", salItems)}</div>
@@ -446,9 +486,9 @@ function renderPlan(){
       </div>
       <div class="split-row" style="border-top:1px solid var(--line);padding-top:11px">
         <input class="split-edit-name" id="sp-name" value="${(split.otherName||"其他支出").replace(/"/g,'')}" onchange="updateSplitName(this.value)">
-        <span style="display:flex;align-items:center;gap:4px">¥<input class="split-edit-amt" id="sp-amt" type="text" inputmode="numeric" value="${otherAmt}" onfocus="this.select()" oninput="liveSplit(this.value)" onblur="commitSplit()"></span>
+        <span style="display:flex;align-items:center;gap:8px">¥<input class="split-edit-amt" id="sp-amt" type="text" inputmode="numeric" value="${otherAmt}" onfocus="this.select()" oninput="liveSplit(this.value)" onblur="commitSplit()"></span>
       </div>
-      <input type="range" class="split-slider" id="sp-slider" min="0" max="${splitPool()}" step="10" value="${otherAmt}" oninput="sliderSplit(this.value)" style="width:100%;margin-top:12px;accent-color:var(--gold)">
+      <input type="range" class="split-slider" id="sp-slider" min="0" max="${splitPool()}" step="1" value="${otherAmt}" oninput="sliderSplit(this.value)" style="width:100%;margin-top:12px;accent-color:var(--gold)">
     </div>
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -459,18 +499,20 @@ function renderPlan(){
       ${PLAN.map(p=>{
         let text=p.text, amt=p.amt;
         if(p.id==="p2"){ text="月初：余下存入弹药池"; amt="¥"+ammoAmt.toLocaleString(); }
+        if(p.id==="p3"){ text="确认定投："+dcaFundsText(); amt="¥"+dcaDaily()+"/日"; }
+        if(p.id==="p5"){ amt=""; } // 兼职收入不固定，取消金额
         return `
         <div class="task ${ps[p.id]?"on":""}" id="task-${p.id}" onclick="togglePlan('${p.id}')">
           <div class="chk ${ps[p.id]?"on":""}"></div>
-          <div style="flex:1">
+          <div class="task-body">
             <div style="display:flex;justify-content:space-between;gap:8px"><span class="tt">${text}</span>${amt?`<span class="ta">${amt}</span>`:""}</div>
             <div class="tn">${p.note}</div>
           </div>
         </div>`;}).join("")}
       ${otherAmt>0?`
-        <div class="task" id="task-pOther" onclick="togglePlan('pOther')">
+        <div class="task ${ps.pOther?"on":""}" id="task-pOther" onclick="togglePlan('pOther')">
           <div class="chk ${ps.pOther?"on":""}"></div>
-          <div style="flex:1">
+          <div class="task-body">
             <div style="display:flex;justify-content:space-between;gap:8px"><span class="tt">月初：${split.otherName||"其他支出"}</span><span class="ta">¥${otherAmt.toLocaleString()}</span></div>
             <div class="tn">自定义用途（如转入旅游基金）</div>
           </div>
@@ -478,12 +520,61 @@ function renderPlan(){
     </div>
     <div class="card">
       <div class="card-t">月定投构成</div>
-      <div class="mini">工资投入（原始定投）&nbsp;&nbsp;<b style="color:var(--ink)">¥1,100</b><br>
-      存款池补差（加仓）&nbsp;&nbsp;<b style="color:var(--ink)">¥496</b><br>
-      合计 ≈ ¥1,596/月（¥76/日）</div>
+      <div class="mini" style="margin-bottom:10px">修改下列金额，自动算出日定投并联动上方「确认定投」</div>
+      <div class="split-row">
+        <span class="split-name">工资投入（原始定投）</span>
+        <span style="display:flex;align-items:center;gap:8px">¥<input class="split-edit-amt" id="dca-sal" type="text" inputmode="numeric" value="${dca.salaryInvest}" onfocus="this.select()" oninput="liveDca()" onblur="commitDca()"></span>
+      </div>
+      <div class="split-row">
+        <span class="split-name">存款池补差（加仓）</span>
+        <span style="display:flex;align-items:center;gap:8px">¥<input class="split-edit-amt" id="dca-add" type="text" inputmode="numeric" value="${dca.poolAdd}" onfocus="this.select()" oninput="liveDca()" onblur="commitDca()"></span>
+      </div>
+      <div class="split-row">
+        <span class="split-name">每月交易日数</span>
+        <span style="display:flex;align-items:center;gap:8px"><input class="split-edit-amt" id="dca-days" type="text" inputmode="numeric" value="${dca.tradingDays}" onfocus="this.select()" oninput="liveDca()" onblur="commitDca()" style="width:60px">日</span>
+      </div>
+      <div class="split-row" style="border-top:1px solid var(--line);padding-top:11px;margin-top:4px">
+        <span class="split-name" style="font-weight:600">月定投合计</span>
+        <span class="split-val" id="dca-total" style="color:var(--gold)">¥${dcaMonthly().toLocaleString()}／月（¥${dcaDaily()}／日）</span>
+      </div>
+      <div class="split-row">
+        <span class="split-name">各基金日定投</span>
+        <span class="split-val" id="dca-funds" style="color:var(--ink);font-size:13px">${dcaFundsText()}</span>
+      </div>
+      <div class="mini" id="dca-cap" style="margin-top:6px;color:var(--danger);${dcaFunds().cap?'':'display:none'}">已达三只基金单日上限（华安¥10 + 大成¥100 + 摩根¥100 = ¥210/日）</div>
     </div>
   `;
 }
+function dcaMonthly(){ return Math.max(0,(Number(dca.salaryInvest)||0)+(Number(dca.poolAdd)||0)); }
+function dcaDaily(){ const d=Math.max(1,Number(dca.tradingDays)||21); return Math.round(dcaMonthly()/d); }
+// 三只基金日定投拆分：华安封顶¥10，剩余在大成/摩根平分（各自≤¥100）
+function dcaFunds(){
+  const daily=dcaDaily();
+  const hua=Math.min(10, daily);
+  let rem=daily-hua;
+  let da=Math.min(100, Math.floor(rem/2));
+  let mo=Math.min(100, rem-da);
+  // 若摩根被封顶后还有余量，回补给大成（大成也≤100）
+  if(mo>=100 && da<100){ da=Math.min(100, rem-100); }
+  return {hua, da, mo, cap:(hua>=10 && da>=100 && mo>=100)};
+}
+function dcaFundsText(){ const f=dcaFunds(); return `华安¥${f.hua}/大成¥${f.da}/摩根¥${f.mo}`; }
+function liveDca(){
+  const s=document.getElementById("dca-sal"), a=document.getElementById("dca-add"), dd=document.getElementById("dca-days");
+  if(s)dca.salaryInvest=Math.max(0,Math.round(Number(s.value)||0));
+  if(a)dca.poolAdd=Math.max(0,Math.round(Number(a.value)||0));
+  if(dd)dca.tradingDays=Math.max(1,Math.round(Number(dd.value)||21));
+  saveLS("cfo_dca",dca);
+  // 联动更新：月定投合计 + 上方"确认定投"行
+  const tot=document.getElementById("dca-total"); if(tot)tot.textContent="¥"+dcaMonthly().toLocaleString()+"／月（¥"+dcaDaily()+"／日）";
+  const funds=document.getElementById("dca-funds"); if(funds)funds.textContent=dcaFundsText();
+  const cap=document.getElementById("dca-cap"); if(cap)cap.style.display=dcaFunds().cap?"":"none";
+  const p3=document.getElementById("task-p3"); if(p3){
+    const ta=p3.querySelector(".ta"); if(ta)ta.textContent="¥"+dcaDaily()+"/日";
+    const tt=p3.querySelector(".tt"); if(tt)tt.textContent="确认定投："+dcaFundsText();
+  }
+}
+function commitDca(){ liveDca(); }
 function _applySplit(other){
   other=Math.max(0,Math.min(splitPool(),Math.round(Number(other)||0)));
   split.other=other; saveLS("cfo_split",split);
@@ -705,14 +796,13 @@ let tt;function toast(m){const t=document.getElementById("toast");t.textContent=
 try{ renderOverview();renderTabs("overview"); }catch(e){ document.body.innerHTML='<div style="padding:40px;text-align:center;color:#6B6357;font-family:sans-serif"><p>加载出错，正在尝试修复…</p></div>'; if("caches" in window){caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());location.reload();});}else location.reload();});} }
 
 // SW + 自救
-// [诊断版] 暂停 service worker，并主动注销已存在的 SW + 清缓存
+// SW 延迟注册：等首屏完全渲染后再注册，避免在 TWA 首次导航时抢占/卡死
 if("serviceWorker" in navigator){
   window.addEventListener("load",()=>{
-    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
-    if("caches" in window){caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});}
+    setTimeout(()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); }, 3500);
   });
 }
-// 卡启动自救：4秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
+// 卡启动自救：6秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
 window.addEventListener("load",()=>{setTimeout(()=>{
   const ov=document.getElementById("v-overview");
   const stuck=!ov||ov.innerHTML.trim()==="";
@@ -724,7 +814,7 @@ window.addEventListener("load",()=>{setTimeout(()=>{
     }); } else done(); };
     clearAll();
   }
-},4000);});
+},6000);});
 </script>
 </body>
 </html>
