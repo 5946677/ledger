@@ -797,24 +797,12 @@ try{ renderOverview();renderTabs("overview"); }catch(e){ document.body.innerHTML
 
 // SW + 自救
 // SW 延迟注册：等首屏完全渲染后再注册，避免在 TWA 首次导航时抢占/卡死
+// 不再注册 service worker（TWA 里 SW 会卡死首屏）。同时主动注销历史遗留的 SW + 清缓存，彻底根治卡启动。
 if("serviceWorker" in navigator){
-  window.addEventListener("load",()=>{
-    setTimeout(()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); }, 3500);
-  });
+  navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
 }
-// 卡启动自救：6秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
-window.addEventListener("load",()=>{setTimeout(()=>{
-  const ov=document.getElementById("v-overview");
-  const stuck=!ov||ov.innerHTML.trim()==="";
-  if(stuck&&!sessionStorage.getItem("cfo_rec")){
-    sessionStorage.setItem("cfo_rec","1");
-    const done=()=>location.reload();
-    const clearAll=()=>{ if("caches" in window){ caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{
-      if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{Promise.all(rs.map(r=>r.unregister())).then(done);});}else done();
-    }); } else done(); };
-    clearAll();
-  }
-},6000);});
+if("caches" in window){ caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{}); }
+// （已移除自动重载自救逻辑，避免 TWA 里反复重载卡死）
 </script>
 </body>
 </html>
