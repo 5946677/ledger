@@ -705,8 +705,13 @@ let tt;function toast(m){const t=document.getElementById("toast");t.textContent=
 try{ renderOverview();renderTabs("overview"); }catch(e){ document.body.innerHTML='<div style="padding:40px;text-align:center;color:#6B6357;font-family:sans-serif"><p>加载出错，正在尝试修复…</p></div>'; if("caches" in window){caches.keys().then(ks=>Promise.all(ks.map(k=>caches.delete(k)))).then(()=>{if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(rs=>{rs.forEach(r=>r.unregister());location.reload();});}else location.reload();});} }
 
 // SW + 自救
-if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("service-worker.js").catch(()=>{});});}
-// 卡启动自救：4秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
+// SW 延迟注册：等首屏完全渲染后再注册，避免在 TWA 首次导航时抢占/卡死
+if("serviceWorker" in navigator){
+  window.addEventListener("load",()=>{
+    setTimeout(()=>{ navigator.serviceWorker.register("service-worker.js").catch(()=>{}); }, 3500);
+  });
+}
+// 卡启动自救：6秒内未渲染出内容则清缓存+注销SW+重载（每次启动最多一次）
 window.addEventListener("load",()=>{setTimeout(()=>{
   const ov=document.getElementById("v-overview");
   const stuck=!ov||ov.innerHTML.trim()==="";
@@ -718,7 +723,7 @@ window.addEventListener("load",()=>{setTimeout(()=>{
     }); } else done(); };
     clearAll();
   }
-},4000);});
+},6000);});
 </script>
 </body>
 </html>
